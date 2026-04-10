@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes progress-bar {
+  from { width: 0% }
+  to { width: 95% }
+}
+
+.animate-progress {
+  animation: progress-bar 55s cubic-bezier(0.1, 0.4, 0.8, 1) forwards;
+}

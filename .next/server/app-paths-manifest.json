@@ -1,0 +1,9 @@
+{
+  "/results/page": "app/results/page.js",
+  "/api/competitors/route": "app/api/competitors/route.js",
+  "/api/verify-token/route": "app/api/verify-token/route.js",
+  "/api/reviews/route": "app/api/reviews/route.js",
+  "/scanning/page": "app/scanning/page.js",
+  "/api/scan/route": "app/api/scan/route.js",
+  "/api/send-magic-link/route": "app/api/send-magic-link/route.js"
+}

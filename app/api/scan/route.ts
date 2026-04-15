@@ -12,7 +12,7 @@ const GENERIC_TYPES = new Set([
 
 export async function POST(req: NextRequest) {
   // ── Parse body outside try/catch so a malformed JSON body surfaces clearly ─
-  let body: { businessName?: string; city?: string; state?: string; trade?: string }
+  let body: { businessName?: string; zipCode?: string; trade?: string }
   try {
     body = await req.json()
   } catch (parseErr) {
@@ -20,15 +20,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { businessName, city, state, trade } = body
+  const { businessName, zipCode, trade } = body
 
-  if (!businessName || !city || !state || !trade) {
+  if (!businessName || !zipCode || !trade) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
   try {
     // ── Step 1: Text Search ─────────────────────────────────────────────────
-    const query = encodeURIComponent(`${businessName} ${trade} ${city} ${state}`)
+    const query = encodeURIComponent(`${businessName} ${trade} ${zipCode}`)
     const searchUrl =
       `https://maps.googleapis.com/maps/api/place/textsearch/json` +
       `?query=${query}&key=${PLACES_API_KEY}`
@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
       'website',
       'editorial_summary',
       'types',
+      'address_components',
     ].join(',')
 
     const detailsUrl =
@@ -83,6 +84,14 @@ export async function POST(req: NextRequest) {
     }
 
     const d = detailsData.result
+
+    // ── Extract city and state from address_components ──────────────────────
+    type AddressComponent = { types: string[]; long_name: string; short_name: string }
+    const addressComponents: AddressComponent[] = d.address_components ?? []
+    const cityComp = addressComponents.find((c) => c.types.includes('locality'))
+    const stateComp = addressComponents.find((c) => c.types.includes('administrative_area_level_1'))
+    const city = cityComp?.long_name ?? ''
+    const state = stateComp?.short_name ?? ''
 
     // ── Profile completeness ────────────────────────────────────────────────
     const hasPhone = !!d.formatted_phone_number
@@ -137,11 +146,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    console.log(`[/api/scan] Done. profileScore=${profileScore} hoursFlag=${hoursFlag} serviceTypesCount=${serviceTypesCount}`)
+    console.log(`[/api/scan] Done. profileScore=${profileScore} hoursFlag=${hoursFlag} serviceTypesCount=${serviceTypesCount} city=${city} state=${state}`)
 
     return NextResponse.json({
       placeId,
       name: d.name,
+      city,
+      state,
       rating: d.rating ?? 0,
       reviewCount: d.user_ratings_total ?? 0,
       hasPhone,

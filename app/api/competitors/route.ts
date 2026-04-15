@@ -9,9 +9,9 @@ export interface Competitor {
 }
 
 export async function POST(req: NextRequest) {
-  const { trade, city, state, placeId: userPlaceId } = await req.json()
+  const { trade, zipCode, placeId: userPlaceId } = await req.json()
 
-  if (!trade || !city || !state) {
+  if (!trade || !zipCode) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     'Roofer': 'roofer',
   }
   const searchTerm = tradeSearchMap[trade] ?? trade.toLowerCase()
-  const query = encodeURIComponent(`${searchTerm} in ${city} ${state}`)
+  const query = encodeURIComponent(`${searchTerm} in ${zipCode}`)
 
   const searchUrl =
     `https://maps.googleapis.com/maps/api/place/textsearch/json` +

@@ -3,76 +3,82 @@
 import { useState, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 
-const US_STATES = [
-  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA',
-  'HI','ID','IL','IN','IA','KS','KY','LA','ME','MD',
-  'MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
-  'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC',
-  'SD','TN','TX','UT','VT','VA','WA','WV','WI','WY',
-]
-
 const TRADES = ['Plumber', 'HVAC Contractor', 'Electrician', 'Roofer']
 
 export default function LandingPage() {
   const router = useRouter()
   const [form, setForm] = useState({
     businessName: '',
-    city: '',
-    state: '',
+    zipCode: '',
     trade: '',
   })
   const [error, setError] = useState('')
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
+    const { name, value } = e.target
+    if (name === 'zipCode') {
+      const digits = value.replace(/\D/g, '').slice(0, 5)
+      setForm((prev) => ({ ...prev, zipCode: digits }))
+    } else {
+      setForm((prev) => ({ ...prev, [name]: value }))
+    }
     setError('')
   }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!form.businessName.trim() || !form.city.trim() || !form.state || !form.trade) {
+    if (!form.businessName.trim() || !form.trade) {
       setError('Please fill in all fields.')
+      return
+    }
+    if (form.zipCode.length !== 5) {
+      setError('Please enter a valid 5-digit zip code.')
       return
     }
     const params = new URLSearchParams({
       name: form.businessName.trim(),
-      city: form.city.trim(),
-      state: form.state,
+      zipCode: form.zipCode,
       trade: form.trade,
     })
     router.push(`/scanning?${params.toString()}`)
   }
 
   return (
-    <main className="min-h-screen flex flex-col">
+    <main className="min-h-screen flex flex-col" style={{ backgroundColor: '#0a0a0a' }}>
       {/* Nav */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-4">
-        <span className="text-xl font-bold text-indigo-600 tracking-tight">Convoa</span>
+      <nav className="px-6 py-4 border-b" style={{ borderColor: '#1a1a1a' }}>
+        <img src="/convoa-logo.png" alt="Convoa" style={{ maxHeight: '40px' }} />
       </nav>
 
       {/* Hero */}
       <section className="flex-1 flex flex-col items-center justify-center px-4 py-16">
         <div className="max-w-2xl w-full text-center mb-10">
-          <span className="inline-block bg-indigo-50 text-indigo-700 text-sm font-semibold px-4 py-1.5 rounded-full mb-5 uppercase tracking-wide">
+          <span
+            className="inline-block text-sm font-semibold px-4 py-1.5 rounded-full mb-5 uppercase tracking-wide"
+            style={{ backgroundColor: '#1a2e2a', color: '#49B29D' }}
+          >
             Free Instant Scan
           </span>
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-gray-900 leading-tight mb-4">
+          <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight mb-4" style={{ color: '#ffffff' }}>
             Is Your Google Business Profile{' '}
-            <span className="text-indigo-600">Costing You Jobs?</span>
+            <span style={{ color: '#49B29D' }}>Costing You Jobs?</span>
           </h1>
-          <p className="text-lg text-gray-500 leading-relaxed">
+          <p className="text-lg leading-relaxed" style={{ color: '#888888' }}>
             We'll scan your profile in 60 seconds and show you exactly what's missing —
             so you can stop losing customers to competitors who look better online.
           </p>
         </div>
 
         {/* Form Card */}
-        <div className="max-w-lg w-full bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-          <h2 className="text-xl font-bold text-gray-800 mb-6">Scan My Google Profile</h2>
+        <div
+          className="max-w-lg w-full rounded-2xl shadow-xl p-8 border"
+          style={{ backgroundColor: '#1a1a1a', borderColor: '#2a2a2a' }}
+        >
+          <h2 className="text-xl font-bold mb-6" style={{ color: '#ffffff' }}>Scan My Google Profile</h2>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="businessName" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="businessName" className="block text-sm font-medium mb-1" style={{ color: '#c9c9c9' }}>
                 Business Name
               </label>
               <input
@@ -82,46 +88,43 @@ export default function LandingPage() {
                 value={form.businessName}
                 onChange={handleChange}
                 placeholder="e.g. Smith Plumbing Co."
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                className="w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-colors"
+                style={{
+                  backgroundColor: '#0f0f0f',
+                  color: '#e5e5e5',
+                  border: '1px solid #333',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = '#49B29D')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = '#333')}
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="city" className="block text-sm font-medium text-gray-700 mb-1">
-                  City
-                </label>
-                <input
-                  id="city"
-                  name="city"
-                  type="text"
-                  value={form.city}
-                  onChange={handleChange}
-                  placeholder="e.g. Austin"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-                />
-              </div>
-              <div>
-                <label htmlFor="state" className="block text-sm font-medium text-gray-700 mb-1">
-                  State
-                </label>
-                <select
-                  id="state"
-                  name="state"
-                  value={form.state}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white"
-                >
-                  <option value="">Select state</option>
-                  {US_STATES.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label htmlFor="zipCode" className="block text-sm font-medium mb-1" style={{ color: '#c9c9c9' }}>
+                Zip Code
+              </label>
+              <input
+                id="zipCode"
+                name="zipCode"
+                type="text"
+                inputMode="numeric"
+                value={form.zipCode}
+                onChange={handleChange}
+                placeholder="e.g. 78701"
+                maxLength={5}
+                className="w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-colors"
+                style={{
+                  backgroundColor: '#0f0f0f',
+                  color: '#e5e5e5',
+                  border: '1px solid #333',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = '#49B29D')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = '#333')}
+              />
             </div>
 
             <div>
-              <label htmlFor="trade" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="trade" className="block text-sm font-medium mb-1" style={{ color: '#c9c9c9' }}>
                 Trade
               </label>
               <select
@@ -129,41 +132,49 @@ export default function LandingPage() {
                 name="trade"
                 value={form.trade}
                 onChange={handleChange}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm bg-white"
+                className="w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-colors"
+                style={{
+                  backgroundColor: '#0f0f0f',
+                  color: form.trade ? '#e5e5e5' : '#666',
+                  border: '1px solid #333',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = '#49B29D')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = '#333')}
               >
-                <option value="">Select your trade</option>
+                <option value="" style={{ color: '#666' }}>Select your trade</option>
                 {TRADES.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t} style={{ color: '#e5e5e5', backgroundColor: '#1a1a1a' }}>{t}</option>
                 ))}
               </select>
             </div>
 
             {error && (
-              <p className="text-red-600 text-sm">{error}</p>
+              <p className="text-sm" style={{ color: '#ef4444' }}>{error}</p>
             )}
 
             <button
               type="submit"
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg transition-colors text-sm tracking-wide mt-2"
+              className="w-full font-semibold py-3 rounded-lg text-sm tracking-wide mt-2 transition-opacity hover:opacity-90"
+              style={{ backgroundColor: '#49B29D', color: '#0a0a0a' }}
             >
               Scan My Profile
             </button>
           </form>
 
-          <p className="text-xs text-gray-400 text-center mt-4">
+          <p className="text-xs text-center mt-4" style={{ color: '#555' }}>
             Free. No credit card required. Takes about 60 seconds.
           </p>
         </div>
 
         {/* Trust signals */}
-        <div className="mt-10 flex flex-wrap justify-center gap-8 text-sm text-gray-400">
+        <div className="mt-10 flex flex-wrap justify-center gap-8 text-sm" style={{ color: '#555' }}>
           <span>✓ Google-verified data</span>
           <span>✓ Instant results</span>
           <span>✓ Built for trades businesses</span>
         </div>
       </section>
 
-      <footer className="text-center py-6 text-xs text-gray-400 border-t border-gray-200">
+      <footer className="text-center py-6 text-xs border-t" style={{ color: '#444', borderColor: '#1a1a1a' }}>
         © {new Date().getFullYear()} Convoa. All rights reserved.
       </footer>
     </main>

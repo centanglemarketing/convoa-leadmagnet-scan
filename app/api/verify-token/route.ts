@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase'
 
-const TOKEN_TTL_HOURS = 24
-
 export async function POST(req: NextRequest) {
   const { token } = await req.json()
 
@@ -12,7 +10,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = createClient()
 
-  // ── 1. Look up the token ─────────────────────────────────────────────────
+  // ── Look up the token ────────────────────────────────────────────────────
   const { data, error } = await supabase
     .from('magic_links')
     .select('*')
@@ -23,30 +21,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid' }, { status: 404 })
   }
 
-  if (data.used) {
-    return NextResponse.json({ error: 'used' }, { status: 410 })
-  }
-
-  // ── 2. Check expiry (24 hours) ────────────────────────────────────────────
-  const ageHours =
-    (Date.now() - new Date(data.created_at).getTime()) / (1000 * 60 * 60)
-
-  if (ageHours > TOKEN_TTL_HOURS) {
-    return NextResponse.json({ error: 'expired' }, { status: 410 })
-  }
-
-  // ── 3. Mark token as used ────────────────────────────────────────────────
-  const { error: updateError } = await supabase
-    .from('magic_links')
-    .update({ used: true })
-    .eq('token', token)
-
-  if (updateError) {
-    console.error('magic_links update error:', updateError)
-    // Non-fatal — still return the data
-  }
-
-  // ── 4. Save the verified lead to the leads table ─────────────────────────
+  // ── Save the verified lead to the leads table ────────────────────────────
   const sd = data.scan_data
   await supabase.from('leads').insert({
     email: data.email,

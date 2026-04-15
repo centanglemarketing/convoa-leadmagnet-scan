@@ -13,6 +13,7 @@ interface Competitor {
 
 interface ScanResult {
   formBusinessName: string
+  zipCode: string
   city: string
   state: string
   trade: string
@@ -46,6 +47,14 @@ interface ScanResult {
   competitors: Competitor[]
 }
 
+interface HealthBreakdown {
+  completeness: number   // 0–25
+  reviews: number        // 0–25
+  visibility: number     // 0–25
+  services: number       // 0–25
+  total: number          // 0–100
+}
+
 type Phase =
   | 'init'
   | 'teaser'
@@ -54,17 +63,57 @@ type Phase =
   | 'full-results'
   | 'token-error'
 
-// ─── Shared UI primitives ─────────────────────────────────────────────────────
+// ─── Health score ─────────────────────────────────────────────────────────────
 
-function StarRating({ rating, size = 'md' }: { rating: number; size?: 'sm' | 'md' }) {
-  const sz = size === 'sm' ? 'w-3.5 h-3.5' : 'w-5 h-5'
+function computeHealth(data: ScanResult): HealthBreakdown {
+  // Completeness: profileScore / 6 × 25
+  const completeness = Math.round((data.profileScore / 6) * 25)
+
+  // Reviews: recentReviewCount
+  const reviews = data.recentReviewCount >= 2 ? 25 : data.recentReviewCount === 1 ? 12 : 0
+
+  // Visibility: how many competitors the user beats (by rating)
+  const ratedCompetitors = data.competitors.filter((c) => c.rating > 0)
+  const beaten = ratedCompetitors.filter((c) => data.rating >= c.rating).length
+  let visibility: number
+  if (ratedCompetitors.length === 0) {
+    visibility = 25
+  } else if (beaten >= 3) {
+    visibility = 25
+  } else if (beaten >= 2) {
+    visibility = 18
+  } else if (beaten >= 1) {
+    visibility = 10
+  } else {
+    visibility = 5
+  }
+
+  // Services: serviceTypesCount
+  const stc = data.serviceTypesCount
+  let services: number
+  if (stc >= 8) {
+    services = 25
+  } else if (stc >= 5) {
+    services = 18
+  } else if (stc >= 3) {
+    services = 12
+  } else {
+    services = Math.round((stc / 3) * 12)
+  }
+
+  return { completeness, reviews, visibility, services, total: completeness + reviews + visibility + services }
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function Stars({ rating }: { rating: number }) {
   return (
     <div className="flex items-center gap-0.5">
       {[1, 2, 3, 4, 5].map((star) => (
         <svg
           key={star}
-          className={`${sz} ${
-            rating >= star ? 'text-yellow-400' : rating >= star - 0.5 ? 'text-yellow-300' : 'text-gray-200'
+          className={`w-4 h-4 ${
+            rating >= star ? 'text-yellow-400' : rating >= star - 0.5 ? 'text-yellow-300' : 'text-gray-600'
           }`}
           fill="currentColor"
           viewBox="0 0 20 20"
@@ -76,426 +125,719 @@ function StarRating({ rating, size = 'md' }: { rating: number; size?: 'sm' | 'md
   )
 }
 
-function ProfileItem({ label, present }: { label: string; present: boolean }) {
+function SectionCard({ children, flag = false }: { children: React.ReactNode; flag?: boolean }) {
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-gray-100 last:border-0">
-      <span className="text-sm text-gray-700">{label}</span>
+    <div
+      className="print-card rounded-xl p-5 border"
+      style={{
+        backgroundColor: '#242424',
+        borderColor: flag ? '#ef4444' : '#333333',
+        borderLeftWidth: flag ? '3px' : '1px',
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function SectionTitle({ children, flagged = false }: { children: React.ReactNode; flagged?: boolean }) {
+  return (
+    <h3
+      className={`text-sm font-bold uppercase tracking-wider mb-3 ${flagged ? 'print-flag-title' : 'print-section-title'}`}
+      style={{ color: flagged ? '#ef4444' : '#49B29D' }}
+    >
+      {children}
+    </h3>
+  )
+}
+
+function CheckRow({ label, present }: { label: string; present: boolean }) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: '#333' }}>
+      <span className="text-sm" style={{ color: '#c9c9c9' }}>{label}</span>
       {present ? (
-        <span className="flex items-center gap-1 text-green-600 text-sm font-medium">
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414L8.414 15 3.293 9.879a1 1 0 011.414-1.414L8.414 12.172l7.879-7.879a1 1 0 011.414 0z" clipRule="evenodd" />
-          </svg>
-          Present
-        </span>
+        <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ backgroundColor: '#1a3a2e', color: '#4ade80' }}>Present</span>
       ) : (
-        <span className="flex items-center gap-1 text-red-500 text-sm font-medium">
-          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-          Missing
-        </span>
+        <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ backgroundColor: '#3a1a1a', color: '#ef4444' }}>Missing</span>
       )}
     </div>
   )
 }
 
-function FlagCard({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+function HealthBar({ label, points, maxPoints }: { label: string; points: number; maxPoints: number }) {
+  const pct = Math.round((points / maxPoints) * 100)
+  const color = pct >= 60 ? '#49B29D' : pct >= 40 ? '#eab308' : '#ef4444'
   return (
-    <div className="bg-amber-50 border border-amber-300 rounded-xl p-5">
-      <div className="flex gap-3 items-center mb-3">
-        <span className="text-xl shrink-0">{icon}</span>
-        <h3 className="font-bold text-amber-800 text-sm">{title}</h3>
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium" style={{ color: '#c9c9c9' }}>{label}</span>
+        <span className="text-xs font-bold" style={{ color }}>{pct}%</span>
       </div>
-      <div className="text-sm text-amber-700 leading-relaxed space-y-2">{children}</div>
+      <div className="w-full rounded-full h-2.5" style={{ backgroundColor: '#333' }}>
+        <div
+          className="h-2.5 rounded-full transition-all"
+          style={{ width: `${pct}%`, backgroundColor: color, minWidth: pct > 0 ? '4px' : '0' }}
+        />
+      </div>
     </div>
   )
 }
 
-function getScoreColor(score: number) {
-  if (score >= 5) return 'text-green-600'
-  if (score >= 3) return 'text-yellow-600'
-  return 'text-red-600'
+// Logarithmic scale so small values are still visible
+function logScale(value: number, max: number): number {
+  if (max === 0) return 0
+  if (value === 0) return 0
+  const scaled = Math.log(value + 1) / Math.log(max + 1)
+  // Clamp between 3% (minimum visible) and 100%
+  return Math.max(3, Math.round(scaled * 100))
 }
 
-function getScoreLabel(score: number) {
-  if (score >= 5) return 'Strong'
-  if (score >= 3) return 'Needs Work'
-  return 'Weak'
-}
+// ─── Nav Logo ─────────────────────────────────────────────────────────────────
 
-function getHeadlineFinding(result: ScanResult): string {
-  if (result.commFailCount > 0) {
-    return `${result.commFailCount} recent review${result.commFailCount > 1 ? 's' : ''} mention communication problems — customers can't reach you.`
-  }
-  if (result.rating > 0 && result.rating < 4.0) {
-    return `Your ${result.rating}★ rating is below the 4.5 average — it's turning potential customers away.`
-  }
-  if (result.profileScore < 4) {
-    return `Your profile is missing ${6 - result.profileScore} key elements that help customers choose you over competitors.`
-  }
-  return `We found ${6 - result.profileScore} opportunities to strengthen your profile and win more jobs.`
-}
-
-// ─── Full report (extracted so token flow reuses the same render) ─────────────
-
-function FullReport({ result }: { result: ScanResult }) {
-  const router = useRouter()
-
-  const displayName = result.name || result.formBusinessName
-  const competitors = result.competitors ?? []
-
-  // ── Local rank calculation ──────────────────────────────────────────────
-  // Sort [user + competitors] by rating desc, then review count desc.
-  // Only include businesses with a rating so unrated entries don't distort position.
-  const allBusinesses = [
-    { name: displayName, rating: result.rating, reviewCount: result.reviewCount, isUser: true },
-    ...competitors.map((c) => ({ ...c, isUser: false })),
-  ].filter((b) => b.rating > 0)
-
-  allBusinesses.sort((a, b) =>
-    b.rating !== a.rating ? b.rating - a.rating : b.reviewCount - a.reviewCount
+function NavBar() {
+  return (
+    <nav className="px-6 py-4 border-b" style={{ borderColor: '#2a2a2a' }}>
+      <img src="/convoa-logo.png" alt="Convoa" style={{ maxHeight: '40px' }} />
+    </nav>
   )
+}
 
-  const userPosition = allBusinesses.findIndex((b) => b.isUser) + 1 // 1-indexed, 0 if not found
-  const totalInSet = allBusinesses.length
+// ─── Summary Cards (shared between FullReport and TeaserView) ─────────────────
 
-  const userBeatenByAny = competitors.some((c) => c.rating > result.rating)
-
-  // ── Flag conditions ─────────────────────────────────────────────────────
-  const lowVelocity = (result.recentReviewCount ?? 0) < 2
-  const lowServices = (result.serviceTypesCount ?? 0) < 3
-  const rankFlagged = userPosition >= 3 && totalInSet >= 3
-
-  // ── Total issue count ───────────────────────────────────────────────────
-  const totalIssues =
-    (6 - result.profileScore) +                           // missing profile fields
-    (result.commFailCount > 0 ? 1 : 0) +                 // comm failures
-    (result.hoursFlag ? 1 : 0) +                         // hours gap
-    (lowVelocity ? 1 : 0) +                              // review velocity
-    (lowServices ? 1 : 0) +                              // services listed
-    1 +                                                   // Q&A (can't verify via Places API; always flagged)
-    (rankFlagged ? 1 : 0)                                // local rank position
+function SummaryCards({
+  data,
+  health,
+  blurred = false,
+}: {
+  data: ScanResult
+  health: HealthBreakdown
+  blurred?: boolean
+}) {
+  const cards = [
+    {
+      label: 'Rating',
+      value: data.rating > 0 ? data.rating.toFixed(1) : '—',
+      sub: <Stars rating={data.rating} />,
+      flag: data.rating > 0 && data.rating < 4.0,
+    },
+    {
+      label: 'Reviews',
+      value: data.reviewCount.toLocaleString(),
+      sub: <span className="text-xs" style={{ color: '#888' }}>total on Google</span>,
+      flag: data.reviewCount < 10,
+    },
+    {
+      label: 'Profile',
+      value: `${data.profileScore}/6`,
+      sub: <span className="text-xs" style={{ color: '#888' }}>completeness</span>,
+      flag: data.profileScore < 5,
+    },
+    {
+      label: 'Health',
+      value: `${health.total}/100`,
+      sub: <span className="text-xs" style={{ color: '#888' }}>profile score</span>,
+      flag: health.total < 70,
+      valueColor: health.total >= 70 ? '#49B29D' : '#ef4444',
+    },
+    {
+      label: 'Recent',
+      value: `${data.recentReviewCount}/${data.totalFetchedReviews}`,
+      sub: <span className="text-xs" style={{ color: '#888' }}>reviews in 90d</span>,
+      flag: data.recentReviewCount === 0 && data.totalFetchedReviews > 0,
+    },
+  ]
 
   return (
-    <div className="space-y-5">
+    <div
+      className="grid grid-cols-2 sm:grid-cols-5 gap-3"
+      style={blurred ? { filter: 'blur(4px)', pointerEvents: 'none', userSelect: 'none' } : {}}
+    >
+      {cards.map(({ label, value, sub, flag, valueColor }) => (
+        <div
+          key={label}
+          className="print-card rounded-xl p-4 text-center border"
+          style={{
+            backgroundColor: '#242424',
+            borderColor: flag ? '#ef4444' : '#333',
+            borderLeftWidth: flag ? '3px' : '1px',
+          }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#888' }}>
+            {label}
+          </p>
+          <p className="text-2xl font-black" style={{ color: valueColor ?? '#ffffff' }}>{value}</p>
+          <div className="mt-1 flex justify-center">{sub}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
-      {/* ── 1. Profile Completeness ─────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-bold text-gray-800">Profile Completeness</h2>
-          <div className={`text-2xl font-extrabold ${getScoreColor(result.profileScore)}`}>
-            {result.profileScore}
-            <span className="text-base font-normal text-gray-400">/6</span>
-            <span className={`ml-2 text-xs font-semibold px-2 py-0.5 rounded-full ${
-              result.profileScore >= 5 ? 'bg-green-100 text-green-700'
-              : result.profileScore >= 3 ? 'bg-yellow-100 text-yellow-700'
-              : 'bg-red-100 text-red-700'
-            }`}>
-              {getScoreLabel(result.profileScore)}
-            </span>
+// ─── Full Report ──────────────────────────────────────────────────────────────
+
+function FullReport({ data }: { data: ScanResult }) {
+  const router = useRouter()
+  const health = computeHealth(data)
+  const location = data.city && data.state ? `${data.city}, ${data.state}` : data.zipCode
+
+  const maxReviews = Math.max(
+    data.reviewCount,
+    ...data.competitors.map((c) => c.reviewCount),
+    1
+  )
+
+  const actionItems: string[] = []
+  if (!data.hasPhone) actionItems.push('Add a phone number to your profile')
+  if (!data.hasWebsite) actionItems.push('Link your website to your Google listing')
+  if (!data.hasPhotos) actionItems.push('Upload at least 5 photos of your work')
+  if (!data.hasDescription) actionItems.push('Write a business description')
+  if (!data.hasCategories) actionItems.push('Add specific service categories')
+  if (data.hoursFlag) actionItems.push('Expand your hours to cover evenings and weekends')
+  if (data.commFailCount > 0) actionItems.push('Respond to all reviews mentioning missed calls')
+  if (data.recentReviewCount === 0 && data.totalFetchedReviews > 0)
+    actionItems.push('Ask your last 3 customers to leave a Google review')
+  if (data.serviceTypesCount < 5) actionItems.push('Add more specific service categories to your profile')
+
+  function handleShare() {
+    navigator.clipboard.writeText(window.location.href).catch(() => {})
+  }
+
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: '#1a1a1a', color: '#e5e5e5' }}>
+      <NavBar />
+
+      <div className="max-w-3xl mx-auto px-4 py-8 space-y-5">
+
+        {/* ── Hero Card ─────────────────────────────────────────────── */}
+        <div
+          className="print-card rounded-xl p-6 border-l-4"
+          style={{ backgroundColor: '#242424', borderColor: health.total < 70 ? '#ef4444' : '#49B29D' }}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: '#888' }}>
+                Google Business Profile Audit
+              </p>
+              <h1 className="text-2xl font-extrabold text-white mb-0.5">{data.name}</h1>
+              <p className="text-sm" style={{ color: '#888' }}>{location} · {data.trade}</p>
+            </div>
+            <div className="flex flex-col items-center sm:items-end shrink-0">
+              <span
+                className="text-5xl font-black leading-none"
+                style={{ color: health.total >= 70 ? '#49B29D' : '#ef4444' }}
+              >
+                {health.total}
+              </span>
+              <span className="text-xs font-semibold mt-0.5" style={{ color: '#888' }}>
+                / 100
+              </span>
+            </div>
           </div>
-        </div>
-        <div className="w-full bg-gray-100 rounded-full h-2 mb-5">
-          <div
-            className={`h-2 rounded-full transition-all duration-700 ${
-              result.profileScore >= 5 ? 'bg-green-500' : result.profileScore >= 3 ? 'bg-yellow-400' : 'bg-red-500'
-            }`}
-            style={{ width: `${(result.profileScore / 6) * 100}%` }}
-          />
-        </div>
-        <ProfileItem label="Phone number listed" present={result.hasPhone} />
-        <ProfileItem label="Website linked" present={result.hasWebsite} />
-        <ProfileItem label="Business hours set" present={result.hasHours} />
-        <ProfileItem label="Photos added" present={result.hasPhotos} />
-        <ProfileItem label="Business description" present={result.hasDescription} />
-        <ProfileItem label="Categories selected" present={result.hasCategories} />
-      </div>
-
-      {/* ── 2. Review Velocity ──────────────────────────────────────────── */}
-      <div className={`rounded-2xl p-5 border shadow-sm ${
-        lowVelocity ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-200'
-      }`}>
-        <div className="flex gap-3 items-center mb-2">
-          <span className="text-xl">📈</span>
-          <h2 className={`text-sm font-bold ${lowVelocity ? 'text-amber-800' : 'text-green-800'}`}>
-            Review Velocity
-          </h2>
-        </div>
-        <p className={`text-sm font-semibold mb-1 ${lowVelocity ? 'text-amber-900' : 'text-green-900'}`}>
-          {result.recentReviewCount ?? 0} of your last {result.totalFetchedReviews ?? 5} reviews are recent
-          (last 90 days).
-        </p>
-        {lowVelocity ? (
-          <p className="text-sm text-amber-700 leading-relaxed">
-            Google weights recent reviews more heavily than older ones. A business with 10 reviews
-            this month outranks one with 100 reviews from 2 years ago in local search.
+          <p className="mt-4 text-sm font-medium" style={{ color: '#c9c9c9' }}>
+            A score below 70 means competitors with stronger profiles are appearing above you when customers search.
           </p>
-        ) : (
-          <p className="text-sm text-green-700 leading-relaxed">
-            You have a healthy flow of recent reviews. Keep encouraging customers to leave feedback
-            after each job.
-          </p>
-        )}
-      </div>
+        </div>
 
-      {/* ── 3. Local Visibility Estimate ────────────────────────────────── */}
-      {totalInSet >= 2 && result.rating > 0 && (
-        <div className={`rounded-2xl p-5 border shadow-sm ${
-          rankFlagged ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-200'
-        }`}>
-          <div className="flex gap-3 items-center mb-2">
-            <span className="text-xl">📍</span>
-            <h2 className={`text-sm font-bold ${rankFlagged ? 'text-red-800' : 'text-green-800'}`}>
-              Local Visibility Estimate
-            </h2>
+        {/* ── 5 Summary Cards ───────────────────────────────────────── */}
+        <SummaryCards data={data} health={health} />
+
+        {/* ── Profile Health Breakdown ──────────────────────────────── */}
+        <SectionCard>
+          <SectionTitle>Profile Health Breakdown</SectionTitle>
+          <div className="space-y-4">
+            <HealthBar label="Completeness" points={health.completeness} maxPoints={25} />
+            <HealthBar label="Services" points={health.services} maxPoints={25} />
+            <HealthBar label="Visibility" points={health.visibility} maxPoints={25} />
+            <HealthBar label="Reviews" points={health.reviews} maxPoints={25} />
           </div>
-          <p className={`text-sm font-semibold mb-1 ${rankFlagged ? 'text-red-900' : 'text-green-900'}`}>
-            Based on your rating and review volume, you are likely appearing in position{' '}
-            <span className={`text-base font-extrabold ${rankFlagged ? 'text-red-600' : 'text-green-600'}`}>
-              {userPosition}
-            </span>{' '}
-            of {totalInSet} in local map search results for{' '}
-            {result.trade.toLowerCase()} in {result.city}.
-          </p>
-          {rankFlagged && (
-            <p className="text-sm text-red-700 leading-relaxed">
-              Businesses in positions 1 and 2 receive approximately{' '}
-              <span className="font-semibold">70% of all clicks</span> on Google Maps.
+        </SectionCard>
+
+        {/* ── Section 1: Profile Completeness ───────────────────────── */}
+        <SectionCard flag={data.profileScore < 5}>
+          <SectionTitle flagged={data.profileScore < 5}>Profile Completeness</SectionTitle>
+          <div>
+            <CheckRow label="Phone number" present={data.hasPhone} />
+            <CheckRow label="Website link" present={data.hasWebsite} />
+            <CheckRow label="Business hours" present={data.hasHours} />
+            <CheckRow label="Photos uploaded" present={data.hasPhotos} />
+            <CheckRow label="Business description" present={data.hasDescription} />
+            <CheckRow label="Service categories" present={data.hasCategories} />
+          </div>
+          {data.profileScore < 6 && (
+            <p className="mt-3 text-xs leading-relaxed" style={{ color: '#888' }}>
+              Incomplete profiles rank lower in local search. Google prioritises businesses that have filled in every field.
             </p>
           )}
-        </div>
-      )}
+        </SectionCard>
 
-      {/* ── 4. How You Compare Locally ──────────────────────────────────── */}
-      {competitors.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-          <h2 className="text-base font-bold text-gray-800 mb-4">How You Compare Locally</h2>
-          <div className="overflow-hidden rounded-xl border border-gray-100">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
-                  <th className="text-left px-4 py-2.5 font-semibold">Business</th>
-                  <th className="text-center px-4 py-2.5 font-semibold">Rating</th>
-                  <th className="text-right px-4 py-2.5 font-semibold">Reviews</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                <tr className="bg-indigo-50">
-                  <td className="px-4 py-3 font-semibold text-indigo-700">
-                    {displayName}
-                    <span className="ml-2 text-xs bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded font-medium">You</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <StarRating rating={result.rating} size="sm" />
-                      <span className="font-bold text-gray-800">
-                        {result.rating > 0 ? result.rating.toFixed(1) : '—'}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-600">{result.reviewCount.toLocaleString()}</td>
-                </tr>
-                {competitors.map((c, i) => (
-                  <tr key={i} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-gray-700 truncate max-w-[180px]">{c.name}</td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        <StarRating rating={c.rating} size="sm" />
-                        <span className={`font-semibold ${c.rating > result.rating ? 'text-red-600' : 'text-gray-700'}`}>
-                          {c.rating > 0 ? c.rating.toFixed(1) : '—'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-600">{c.reviewCount.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className={`mt-4 rounded-lg px-4 py-3 text-sm leading-relaxed ${
-            userBeatenByAny
-              ? 'bg-red-50 border border-red-200 text-red-700'
-              : 'bg-green-50 border border-green-200 text-green-700'
-          }`}>
-            {userBeatenByAny ? (
-              <>
-                <span className="font-semibold">One or more competitors in your area have a higher rating.</span>{' '}
-                Communication failures are the #1 cause of lower ratings in trades businesses.
-              </>
-            ) : (
-              <>
-                <span className="font-semibold">Your rating is competitive locally.</span>{' '}
-                The next risk is availability — contractors who answer every call keep it that way.
-              </>
-            )}
-          </div>
-        </div>
-      )}
+        {/* ── Section 2: Rating & Reviews vs Top Competitors ────────── */}
+        <SectionCard flag={data.reviewCount < 20}>
+          <SectionTitle flagged={data.reviewCount < 20}>Rating &amp; Reviews vs Top Competitors</SectionTitle>
 
-      {/* ── 5. Services Listed ──────────────────────────────────────────── */}
-      <div className={`rounded-2xl p-5 border shadow-sm ${
-        lowServices ? 'bg-amber-50 border-amber-300' : 'bg-green-50 border-green-200'
-      }`}>
-        <div className="flex gap-3 items-center mb-2">
-          <span className="text-xl">🔧</span>
-          <h2 className={`text-sm font-bold ${lowServices ? 'text-amber-800' : 'text-green-800'}`}>
-            Services Listed
-          </h2>
-        </div>
-        <p className={`text-sm font-semibold mb-1 ${lowServices ? 'text-amber-900' : 'text-green-900'}`}>
-          Google has attributed{' '}
-          <span className={`font-extrabold text-base ${lowServices ? 'text-amber-700' : 'text-green-700'}`}>
-            {result.serviceTypesCount ?? 0}
-          </span>{' '}
-          specific service {(result.serviceTypesCount ?? 0) === 1 ? 'category' : 'categories'} to your profile.
-        </p>
-        {lowServices ? (
-          <p className="text-sm text-amber-700 leading-relaxed">
-            Your profile lists few specific services. Each service you add (drain cleaning, water
-            heater repair, emergency plumbing) is a separate ranking opportunity in local search.
-          </p>
-        ) : (
-          <p className="text-sm text-green-700 leading-relaxed">
-            Your profile has good service coverage. Make sure your Google Business Profile categories
-            match these exactly to maintain your ranking.
-          </p>
-        )}
-      </div>
-
-
-      {/* ── 7. Q&A Section ──────────────────────────────────────────────── */}
-      {/* Note: Google Places API does not expose Q&A data. This section is  */}
-      {/* always flagged because most small trades businesses leave their     */}
-      {/* Q&A unclaimed, making it a consistent and accurate finding.         */}
-      <FlagCard icon="❓" title="Google Q&A Section">
-        <p>
-          Your Google Q&A section is likely empty. Anyone — including competitors — can post
-          questions and answers on your profile. Claiming this section protects your reputation
-          and lets you control the narrative before customers call.
-        </p>
-      </FlagCard>
-
-      {/* ── 8. Hours Flag ───────────────────────────────────────────────── */}
-      {result.hoursFlag && (
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-5 space-y-3">
-          <div className="flex gap-4 items-center">
-            <span className="text-2xl shrink-0">🌙</span>
-            <h3 className="font-bold text-amber-800 text-sm">After-Hours Coverage Gap Detected</h3>
+          {/* Rating comparison */}
+          <div className="space-y-2 mb-4">
+            {[
+              { name: data.name + ' (you)', rating: data.rating, reviewCount: data.reviewCount, isUser: true },
+              ...data.competitors,
+            ].map((biz, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 rounded-lg px-3 py-2"
+                style={{ backgroundColor: (biz as { isUser?: boolean }).isUser ? '#1e2f2b' : '#1e1e1e' }}
+              >
+                <span className="text-sm flex-1 truncate" style={{ color: (biz as { isUser?: boolean }).isUser ? '#49B29D' : '#c9c9c9' }}>
+                  {biz.name}
+                </span>
+                <span className="text-xs font-medium shrink-0" style={{ color: '#888' }}>
+                  {biz.rating > 0 ? biz.rating.toFixed(1) : '—'} ★ · {biz.reviewCount.toLocaleString()} reviews
+                </span>
+              </div>
+            ))}
           </div>
 
-          {result.weekdayEveningMissing && (
-            <div className="flex gap-3 items-start">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 mt-2" />
-              <p className="text-sm text-amber-700 leading-relaxed">
-                Your profile shows you stop taking calls at{' '}
-                <span className="font-semibold text-amber-900">{result.earliestWeekdayClose}</span>.
-                After {result.earliestWeekdayClose}, Google will surface competitors who are available
-                above you in local search results. Every call that comes in after your listed hours
-                goes to them, not you.
-              </p>
-            </div>
-          )}
+          {/* Review count bars (logarithmic scale) */}
+          <div className="space-y-3 mt-4">
+            {[
+              { name: data.name + ' (you)', reviewCount: data.reviewCount, isUser: true },
+              ...data.competitors,
+            ].map((biz, i) => (
+              <div key={i}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs truncate max-w-[65%]" style={{ color: (biz as { isUser?: boolean }).isUser ? '#49B29D' : '#c9c9c9' }}>
+                    {biz.name}
+                  </span>
+                  <span className="text-xs font-semibold" style={{ color: '#888' }}>
+                    {biz.reviewCount.toLocaleString()} reviews
+                  </span>
+                </div>
+                <div className="w-full rounded-full h-2.5" style={{ backgroundColor: '#333' }}>
+                  <div
+                    className="h-2.5 rounded-full"
+                    style={{
+                      width: `${logScale(biz.reviewCount, maxReviews)}%`,
+                      backgroundColor: (biz as { isUser?: boolean }).isUser ? '#49B29D' : '#6b7280',
+                      minHeight: '2px',
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
 
-          {result.weekendMissing && (
-            <div className="flex gap-3 items-start">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0 mt-2" />
-              <p className="text-sm text-amber-700 leading-relaxed">
-                Google prioritises businesses with weekend availability in Saturday and Sunday
-                searches. Customers searching for emergency help on weekends will see your
-                competitors first.
-              </p>
-            </div>
+          {data.reviewCount < 20 && (
+            <p className="mt-3 text-xs leading-relaxed" style={{ color: '#888' }}>
+              Businesses with more reviews win trust before the customer even clicks. Ask every satisfied customer to leave a review.
+            </p>
           )}
+        </SectionCard>
 
-          {result.openingHours.length > 0 && (
-            <div className="ml-4 pt-2 text-xs text-amber-600 space-y-0.5 border-t border-amber-200">
-              {result.openingHours.map((h, i) => <div key={i}>{h}</div>)}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── 9. Communication Failures ────────────────────────────────────── */}
-      <div className={`rounded-xl p-5 flex gap-4 items-start border ${
-        result.commFailCount > 0 ? 'bg-red-50 border-red-300' : 'bg-green-50 border-green-200'
-      }`}>
-        <span className="text-2xl">{result.commFailCount > 0 ? '📵' : '💬'}</span>
-        <div>
-          <h3 className={`font-bold text-sm mb-1 ${result.commFailCount > 0 ? 'text-red-800' : 'text-green-800'}`}>
-            Communication Failure Reviews
-          </h3>
-          {result.commFailCount > 0 ? (
+        {/* ── Section 3: Review Velocity ────────────────────────────── */}
+        <SectionCard flag={data.recentReviewCount === 0 && data.totalFetchedReviews > 0}>
+          <SectionTitle flagged={data.recentReviewCount === 0 && data.totalFetchedReviews > 0}>
+            Review Velocity
+          </SectionTitle>
+          {data.totalFetchedReviews === 0 ? (
+            <p className="text-sm" style={{ color: '#888' }}>No reviews found on your profile.</p>
+          ) : (
             <>
-              <p className="text-sm text-red-700 leading-relaxed">
-                <span className="font-bold text-red-600 text-base">{result.commFailCount}</span>{' '}
-                review{result.commFailCount > 1 ? 's' : ''} mention{result.commFailCount === 1 ? 's' : ''}{' '}
-                unanswered calls, voicemails, or no response. Each one is a job you lost.
+              <p className="text-sm mb-2" style={{ color: '#c9c9c9' }}>
+                <span
+                  className="text-2xl font-black"
+                  style={{ color: data.recentReviewCount > 0 ? '#49B29D' : '#ef4444' }}
+                >
+                  {data.recentReviewCount}
+                </span>
+                {' '}of your {data.totalFetchedReviews} most recent reviews were posted in the last{' '}
+                <span className="font-semibold text-white">90 days.</span>
               </p>
-              <div className="mt-3 space-y-2">
-                {result.matchingReviews.map((review, i) => (
-                  <blockquote key={i} className="text-xs text-red-600 italic bg-red-100 rounded-lg px-3 py-2 border-l-2 border-red-400">
-                    "{review.length > 180 ? review.slice(0, 180) + '…' : review}"
-                  </blockquote>
+              {data.recentReviewCount === 0 ? (
+                <p className="text-xs leading-relaxed" style={{ color: '#888' }}>
+                  Google treats fresh reviews as a ranking signal. No new reviews in 90 days signals to Google (and customers) that your business may be inactive.
+                </p>
+              ) : data.recentReviewCount < 3 ? (
+                <p className="text-xs leading-relaxed" style={{ color: '#888' }}>
+                  You have some recent activity, but competitors with a steady stream of new reviews will outrank you over time.
+                </p>
+              ) : (
+                <p className="text-xs leading-relaxed" style={{ color: '#4ade80' }}>
+                  Good — you have an active review stream. Keep it up by asking every customer.
+                </p>
+              )}
+            </>
+          )}
+        </SectionCard>
+
+        {/* ── Section 4: Services Listed ────────────────────────────── */}
+        <SectionCard flag={data.serviceTypesCount < 3}>
+          <SectionTitle flagged={data.serviceTypesCount < 3}>Services Listed</SectionTitle>
+          <p className="text-sm mb-2" style={{ color: '#c9c9c9' }}>
+            Your profile has{' '}
+            <span
+              className="text-2xl font-black"
+              style={{ color: data.serviceTypesCount >= 3 ? '#49B29D' : '#ef4444' }}
+            >
+              {data.serviceTypesCount}
+            </span>{' '}
+            specific service {data.serviceTypesCount === 1 ? 'category' : 'categories'} listed.
+          </p>
+          {data.serviceTypesCount < 5 ? (
+            <p className="text-xs leading-relaxed" style={{ color: '#888' }}>
+              Adding more categories helps Google show you for more search terms. Go to your Google Business Profile and add every service you offer.
+            </p>
+          ) : (
+            <p className="text-xs leading-relaxed" style={{ color: '#4ade80' }}>
+              You have a good range of categories listed — this helps customers find you for specific jobs.
+            </p>
+          )}
+        </SectionCard>
+
+        {/* ── Section 5: After-Hours (conditional — only shown when flagged) */}
+        {data.hoursFlag && (
+          <SectionCard flag={true}>
+            <SectionTitle flagged={true}>After-Hours Coverage</SectionTitle>
+            <div className="space-y-3">
+              {data.weekdayEveningMissing && (
+                <div className="flex items-start gap-2.5">
+                  <svg className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#ef4444' }} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-sm leading-relaxed" style={{ color: '#c9c9c9' }}>
+                    Your profile shows you stop taking calls at{' '}
+                    <span className="font-semibold text-white">{data.earliestWeekdayClose}</span>.
+                    When a customer searches for a {data.trade.toLowerCase()} after {data.earliestWeekdayClose}, Google will display competitors who have evening hours listed above you — even if you would answer the phone.
+                  </p>
+                </div>
+              )}
+              {data.weekendMissing && (
+                <div className="flex items-start gap-2.5">
+                  <svg className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#ef4444' }} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-sm leading-relaxed" style={{ color: '#c9c9c9' }}>
+                    Your profile shows no weekend availability. Customers searching on Saturday or Sunday will see competitors with weekend hours ranked above you in local search results.
+                  </p>
+                </div>
+              )}
+            </div>
+            {data.openingHours.length > 0 && (
+              <div className="mt-4 rounded-lg px-3 py-2.5" style={{ backgroundColor: '#1a1a1a' }}>
+                <p className="text-xs font-semibold mb-1.5" style={{ color: '#888' }}>Your current hours</p>
+                {data.openingHours.map((line) => (
+                  <p key={line} className="text-xs" style={{ color: '#c9c9c9' }}>{line}</p>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+        )}
+
+        {/* ── Section 6: Communication Failures ────────────────────── */}
+        <SectionCard flag={data.commFailCount > 0}>
+          <SectionTitle flagged={data.commFailCount > 0}>Communication Issues</SectionTitle>
+          {data.commFailCount === 0 ? (
+            <p className="text-sm" style={{ color: '#4ade80' }}>
+              No reviews mention missed calls or no-response complaints. Keep it up.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm mb-3" style={{ color: '#c9c9c9' }}>
+                <span className="text-2xl font-black" style={{ color: '#ef4444' }}>{data.commFailCount}</span>{' '}
+                {data.commFailCount === 1 ? 'review mentions' : 'reviews mention'} missed calls or no response.
+                Customers read these and choose competitors instead.
+              </p>
+              <div className="space-y-2">
+                {data.matchingReviews.map((text, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg px-3 py-2.5 border-l-2"
+                    style={{ backgroundColor: '#1a1a1a', borderColor: '#ef4444' }}
+                  >
+                    <p className="text-xs italic leading-relaxed" style={{ color: '#c9c9c9' }}>
+                      &ldquo;{text.length > 200 ? text.slice(0, 200) + '…' : text}&rdquo;
+                    </p>
+                  </div>
                 ))}
               </div>
             </>
-          ) : (
-            <p className="text-sm text-green-700 leading-relaxed">
-              No missed call mentions found — yet. Most trades businesses don't see this problem
-              until it shows up publicly on Google. Convoa answers every call 24/7 so it never
-              gets to that point.
-            </p>
           )}
-        </div>
-      </div>
+        </SectionCard>
 
-      {/* ── 10. CTA Banner ──────────────────────────────────────────────── */}
-      <div className="bg-gray-900 rounded-2xl p-7 text-white">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="bg-red-500 text-white text-xs font-bold px-2.5 py-1 rounded-full">
-            {totalIssues} issue{totalIssues !== 1 ? 's' : ''} found
-          </span>
-        </div>
-        <h3 className="text-xl font-extrabold mb-2 leading-snug">
-          {totalIssues} issue{totalIssues !== 1 ? 's' : ''} found on your profile.
-        </h3>
-        <p className="text-gray-300 text-sm leading-relaxed mb-6">
-          Convoa makes sure every call gets answered — even the ones you miss at 2am.
-          A live agent answers in your business name, takes a message, and texts you
-          instantly. Never lose a job to voicemail again.
-        </p>
-        <a
-          href="https://convoa.com/trial"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-block bg-indigo-500 hover:bg-indigo-400 text-white font-bold px-7 py-3.5 rounded-xl transition-colors text-sm"
+        {/* ── Section 7: Q&A ────────────────────────────────────────── */}
+        <SectionCard flag={true}>
+          <SectionTitle flagged={true}>Q&amp;A Section</SectionTitle>
+          <p className="text-sm" style={{ color: '#c9c9c9' }}>
+            Most trades businesses have <span className="font-semibold text-white">no Q&amp;A entries</span> on their Google profile. This is a missed opportunity — customers frequently ask about pricing, availability, and service areas before calling.
+          </p>
+          <p className="mt-2 text-xs leading-relaxed" style={{ color: '#888' }}>
+            Add 5–10 questions and answers to your profile. Google shows these prominently and they act as mini-FAQs that pre-qualify leads before they call.
+          </p>
+        </SectionCard>
+
+        {/* ── Action Plan ───────────────────────────────────────────── */}
+        {actionItems.length > 0 && (
+          <div className="print-card rounded-xl p-5 border" style={{ backgroundColor: '#1e2f2b', borderColor: '#49B29D' }}>
+            <h3 className="print-section-title text-sm font-bold uppercase tracking-wider mb-3" style={{ color: '#49B29D' }}>
+              Your Action Plan
+            </h3>
+            <ol className="space-y-2">
+              {actionItems.map((item, i) => (
+                <li key={i} className="flex items-start gap-3 text-sm" style={{ color: '#c9c9c9' }}>
+                  <span
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
+                    style={{ backgroundColor: '#49B29D', color: '#111' }}
+                  >
+                    {i + 1}
+                  </span>
+                  {item}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        {/* ── CTA ──────────────────────────────────────────────────── */}
+        <div
+          className="print-card rounded-xl p-6 text-center border"
+          style={{ backgroundColor: '#242424', borderColor: '#333' }}
+          data-print-hide
         >
-          Try Free for 14 Days →
-        </a>
-        <p className="text-gray-500 text-xs mt-3">No credit card required.</p>
-      </div>
+          <h3 className="text-lg font-extrabold text-white mb-2">
+            Want us to fix this for you?
+          </h3>
+          <p className="text-sm mb-5" style={{ color: '#888' }}>
+            Convoa helps trades businesses dominate local search — we handle your Google profile, reviews, and online presence so you can focus on the job.
+          </p>
+          <a
+            href="https://convoa.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block px-8 py-3 rounded-lg font-semibold text-sm transition-opacity hover:opacity-90"
+            style={{ backgroundColor: '#49B29D', color: '#111' }}
+          >
+            Book a Free Strategy Call
+          </a>
+        </div>
 
-      <button
-        onClick={() => router.push('/')}
-        className="w-full text-center text-sm text-gray-400 hover:text-gray-600 py-2 transition-colors"
-      >
-        ← Scan another business
-      </button>
+        {/* ── Footer Actions ────────────────────────────────────────── */}
+        <div
+          className="flex flex-wrap justify-center gap-3 pt-2 pb-8"
+          data-print-hide
+        >
+          <button
+            onClick={() => router.push('/')}
+            className="px-5 py-2.5 rounded-lg text-sm font-medium border transition-colors hover:opacity-80"
+            style={{ borderColor: '#444', color: '#c9c9c9', backgroundColor: 'transparent' }}
+          >
+            Scan Another Business
+          </button>
+          <button
+            onClick={handleShare}
+            className="px-5 py-2.5 rounded-lg text-sm font-medium border transition-colors hover:opacity-80"
+            style={{ borderColor: '#444', color: '#c9c9c9', backgroundColor: 'transparent' }}
+          >
+            Share Report
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="px-5 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
+            style={{ backgroundColor: '#49B29D', color: '#111' }}
+          >
+            Download PDF
+          </button>
+        </div>
+
+        {/* ── Print-only footer ─────────────────────────────────────── */}
+        <div className="print-footer">
+          Generated by Convoa — convoa.com
+        </div>
+
+      </div>
     </div>
   )
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Teaser (pre-email gate) ──────────────────────────────────────────────────
+
+function TeaserView({
+  data,
+  onSubmitEmail,
+  emailSending,
+  emailError,
+}: {
+  data: ScanResult
+  onSubmitEmail: (email: string) => void
+  emailSending: boolean
+  emailError: string
+}) {
+  const [email, setEmail] = useState('')
+  const health = computeHealth(data)
+  const location = data.city && data.state ? `${data.city}, ${data.state}` : data.zipCode
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!email.trim()) return
+    onSubmitEmail(email.trim())
+  }
+
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: '#1a1a1a', color: '#e5e5e5' }}>
+      <NavBar />
+
+      <div className="max-w-2xl mx-auto px-4 py-10 space-y-5">
+
+        {/* Hero */}
+        <div
+          className="rounded-xl p-6 border-l-4"
+          style={{ backgroundColor: '#242424', borderColor: health.total < 70 ? '#ef4444' : '#49B29D' }}
+        >
+          <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: '#888' }}>
+            Scan Complete
+          </p>
+          <h1 className="text-2xl font-extrabold text-white mb-1">{data.name}</h1>
+          <p className="text-sm mb-4" style={{ color: '#888' }}>{location} · {data.trade}</p>
+          <div className="flex items-baseline gap-3">
+            <span
+              className="text-5xl font-black"
+              style={{ color: health.total >= 70 ? '#49B29D' : '#ef4444' }}
+            >
+              {health.total}
+            </span>
+            <span className="text-base font-semibold" style={{ color: '#c9c9c9' }}>
+              / 100 profile health score
+            </span>
+          </div>
+          <p className="mt-3 text-sm" style={{ color: '#888' }}>
+            A score below 70 means competitors with stronger profiles are appearing above you when customers search.
+          </p>
+        </div>
+
+        {/* Email gate */}
+        <div
+          className="rounded-xl p-6 border"
+          style={{ backgroundColor: '#242424', borderColor: '#49B29D' }}
+        >
+          <h2 className="text-lg font-extrabold text-white mb-1">
+            See your full report — free
+          </h2>
+          <p className="text-sm mb-5" style={{ color: '#888' }}>
+            Enter your email and we'll send you a link to your complete profile audit, health breakdown, and step-by-step action plan.
+          </p>
+          <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@yourcompany.com"
+              className="flex-1 px-4 py-2.5 rounded-lg text-sm outline-none"
+              style={{ backgroundColor: '#1a1a1a', color: '#e5e5e5', border: '1px solid #444' }}
+              required
+            />
+            <button
+              type="submit"
+              disabled={emailSending}
+              className="px-6 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ backgroundColor: '#49B29D', color: '#111' }}
+            >
+              {emailSending ? 'Sending…' : 'Send My Report'}
+            </button>
+          </form>
+          {emailError && (
+            <p className="mt-2 text-xs" style={{ color: '#ef4444' }}>{emailError}</p>
+          )}
+          <p className="mt-3 text-xs" style={{ color: '#555' }}>
+            No spam. One email with your report link. That's it.
+          </p>
+        </div>
+
+        {/* Blurred preview of summary cards */}
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#555' }}>
+            Your full report includes:
+          </p>
+          <SummaryCards data={data} health={health} blurred={true} />
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+// ─── Email Sent Confirmation ──────────────────────────────────────────────────
+
+function EmailSentView({ email }: { email: string }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-4" style={{ backgroundColor: '#1a1a1a' }}>
+      <div className="max-w-md w-full rounded-2xl p-8 border text-center" style={{ backgroundColor: '#242424', borderColor: '#333' }}>
+        <div
+          className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+          style={{ backgroundColor: '#1e2f2b' }}
+        >
+          <svg className="w-8 h-8" style={{ color: '#49B29D' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <h2 className="text-xl font-extrabold text-white mb-2">Check your inbox</h2>
+        <p className="text-sm mb-1" style={{ color: '#888' }}>
+          We sent your report link to
+        </p>
+        <p className="text-sm font-semibold mb-4" style={{ color: '#49B29D' }}>{email}</p>
+        <p className="text-xs" style={{ color: '#555' }}>
+          Click the link in the email to open your full report.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Token Error ──────────────────────────────────────────────────────────────
+
+function TokenErrorView({ router }: { router: ReturnType<typeof useRouter> }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-4" style={{ backgroundColor: '#1a1a1a' }}>
+      <div className="max-w-md w-full rounded-2xl p-8 border text-center" style={{ backgroundColor: '#242424', borderColor: '#333' }}>
+        <div className="text-4xl mb-4">⚠️</div>
+        <h2 className="text-xl font-bold text-white mb-2">Link already used or not found</h2>
+        <p className="text-sm mb-6" style={{ color: '#888' }}>
+          Report links are single-use. Run a new scan to get a fresh link.
+        </p>
+        <button
+          onClick={() => router.push('/')}
+          className="px-6 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
+          style={{ backgroundColor: '#49B29D', color: '#111' }}
+        >
+          Scan Again
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Loading ──────────────────────────────────────────────────────────────────
+
+function LoadingView() {
+  return (
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#1a1a1a' }}>
+      <div className="flex flex-col items-center gap-4">
+        <svg className="w-10 h-10 animate-spin" style={{ color: '#49B29D' }} fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+        <p className="text-sm" style={{ color: '#888' }}>Loading your report…</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function ResultsClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
   const [phase, setPhase] = useState<Phase>('init')
-  const [result, setResult] = useState<ScanResult | null>(null)
-  const [email, setEmail] = useState('')
-  const [emailError, setEmailError] = useState('')
+  const [scanData, setScanData] = useState<ScanResult | null>(null)
   const [emailSending, setEmailSending] = useState(false)
+  const [emailError, setEmailError] = useState('')
+  const [sentEmail, setSentEmail] = useState('')
 
   useEffect(() => {
     const token = searchParams.get('token')
@@ -507,254 +849,72 @@ export default function ResultsClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),
       })
-        .then((r) => r.json())
+        .then((res) => res.json())
         .then((data) => {
-          if (data.success && data.scanData) {
-            setResult(data.scanData as ScanResult)
-            setPhase('full-results')
-          } else {
+          if (!data.success) {
             setPhase('token-error')
+            return
           }
+          setScanData(data.scanData as ScanResult)
+          setPhase('full-results')
         })
         .catch(() => setPhase('token-error'))
-    } else {
-      const raw = sessionStorage.getItem('scanResult')
-      if (!raw) { router.replace('/'); return }
-      try {
-        setResult(JSON.parse(raw))
-        setPhase('teaser')
-      } catch {
-        router.replace('/')
-      }
+      return
+    }
+
+    const raw = sessionStorage.getItem('scanResult')
+    if (!raw) {
+      router.replace('/')
+      return
+    }
+    try {
+      const parsed = JSON.parse(raw) as ScanResult
+      setScanData(parsed)
+      setPhase('teaser')
+    } catch {
+      router.replace('/')
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function handleEmailSubmit(e: FormEvent) {
-    e.preventDefault()
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setEmailError('Please enter a valid email address.')
-      return
-    }
-    if (!result) return
+  async function handleEmailSubmit(email: string) {
+    if (!scanData) return
     setEmailSending(true)
     setEmailError('')
+
     try {
       const res = await fetch('/api/send-magic-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), scanData: result }),
+        body: JSON.stringify({ email, scanData }),
       })
+      const data = await res.json()
       if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Failed to send email')
+        setEmailError(data.error || 'Failed to send email. Please try again.')
+        return
       }
+      setSentEmail(email)
       setPhase('email-sent')
-    } catch (err: unknown) {
-      setEmailError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+    } catch {
+      setEmailError('Something went wrong. Please try again.')
     } finally {
       setEmailSending(false)
     }
   }
 
-  // ── Loading states ────────────────────────────────────────────────────────
-  if (phase === 'init' || phase === 'token-loading') {
+  if (phase === 'init' || (phase === 'token-loading' && !scanData)) return <LoadingView />
+  if (phase === 'token-error') return <TokenErrorView router={router} />
+  if (phase === 'email-sent') return <EmailSentView email={sentEmail} />
+  if (phase === 'full-results' && scanData) return <FullReport data={scanData} />
+  if (phase === 'teaser' && scanData) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-4">
-          <svg className="animate-spin w-10 h-10 text-indigo-500" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          <p className="text-gray-500 text-sm">
-            {phase === 'token-loading' ? 'Verifying your link…' : 'Loading…'}
-          </p>
-        </div>
-      </div>
+      <TeaserView
+        data={scanData}
+        onSubmitEmail={handleEmailSubmit}
+        emailSending={emailSending}
+        emailError={emailError}
+      />
     )
   }
-
-  // ── Token error ───────────────────────────────────────────────────────────
-  if (phase === 'token-error') {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4">
-        <div className="bg-white rounded-2xl shadow-lg p-10 max-w-md w-full text-center">
-          <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-5">
-            <svg className="w-7 h-7 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0 1 12 19c-5.523 0-10-4.477-10-10S6.477 2 12 2c1.14 0 2.234.19 3.25.54M15 9l-6 6m0-6 6 6" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Link expired or already used</h2>
-          <p className="text-gray-500 text-sm leading-relaxed mb-7">
-            This link has expired or already been used. Report links are single-use and valid for
-            24 hours. Please scan your business again to get a fresh report.
-          </p>
-          <button
-            onClick={() => router.push('/')}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition-colors text-sm"
-          >
-            Scan My Business Again
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (!result) return null
-
-  const displayName = result.name || result.formBusinessName
-  const headlineFinding = getHeadlineFinding(result)
-
-  // ── Full results (magic-link flow) ────────────────────────────────────────
-  if (phase === 'full-results') {
-    return (
-      <main className="min-h-screen bg-gray-50">
-        <nav className="bg-white border-b border-gray-200 px-6 py-4">
-          <span className="text-xl font-bold text-indigo-600 tracking-tight">Convoa</span>
-        </nav>
-        <div className="max-w-2xl mx-auto px-4 py-10 space-y-6">
-          <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-            <p className="text-xs font-semibold text-indigo-500 uppercase tracking-widest mb-1">
-              Google Business Profile Scan
-            </p>
-            <h1 className="text-2xl font-extrabold text-gray-900 mb-3">{displayName}</h1>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <StarRating rating={result.rating} />
-                <span className="text-2xl font-bold text-gray-800">
-                  {result.rating > 0 ? result.rating.toFixed(1) : '—'}
-                </span>
-              </div>
-              <span className="text-sm text-gray-500">
-                {result.reviewCount > 0 ? `${result.reviewCount.toLocaleString()} reviews` : 'No reviews yet'}
-              </span>
-              <span className="text-sm text-gray-400">·</span>
-              <span className="text-sm text-gray-500">{result.trade}</span>
-              <span className="text-sm text-gray-400">·</span>
-              <span className="text-sm text-gray-500">{result.city}, {result.state}</span>
-            </div>
-          </div>
-          <FullReport result={result} />
-        </div>
-      </main>
-    )
-  }
-
-  // ── Teaser (session flow) ─────────────────────────────────────────────────
-  return (
-    <main className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-200 px-6 py-4">
-        <span className="text-xl font-bold text-indigo-600 tracking-tight">Convoa</span>
-      </nav>
-
-      <div className="max-w-2xl mx-auto px-4 py-10 space-y-6">
-
-        {/* Business header */}
-        <div className="bg-white rounded-2xl shadow-md p-6 border border-gray-100">
-          <p className="text-xs font-semibold text-indigo-500 uppercase tracking-widest mb-1">
-            Google Business Profile Scan
-          </p>
-          <h1 className="text-2xl font-extrabold text-gray-900 mb-3">{displayName}</h1>
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <StarRating rating={result.rating} />
-              <span className="text-2xl font-bold text-gray-800">
-                {result.rating > 0 ? result.rating.toFixed(1) : '—'}
-              </span>
-            </div>
-            <span className="text-sm text-gray-500">
-              {result.reviewCount > 0 ? `${result.reviewCount.toLocaleString()} reviews` : 'No reviews yet'}
-            </span>
-            <span className="text-sm text-gray-400">·</span>
-            <span className="text-sm text-gray-500">{result.trade}</span>
-            <span className="text-sm text-gray-400">·</span>
-            <span className="text-sm text-gray-500">{result.city}, {result.state}</span>
-          </div>
-        </div>
-
-        {/* Top finding */}
-        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex gap-3 items-start">
-          <span className="text-xl mt-0.5">🔍</span>
-          <div>
-            <p className="text-sm font-semibold text-amber-800 mb-0.5">Top Finding</p>
-            <p className="text-sm text-amber-700">{headlineFinding}</p>
-          </div>
-        </div>
-
-        {/* Email gate */}
-        {phase === 'email-sent' ? (
-          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-8 text-center">
-            <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-5">
-              <svg className="w-7 h-7 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 0 0 2.22 0L21 8M5 19h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2z" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Check your email</h2>
-            <p className="text-gray-500 text-sm leading-relaxed mb-1">
-              Your report link is on its way to{' '}
-              <span className="font-semibold text-gray-700">{email}</span>.
-            </p>
-            <p className="text-gray-400 text-sm leading-relaxed mb-6">
-              The link expires in 24 hours and is single-use — click it to unlock your full report.
-            </p>
-            <div className="bg-gray-50 rounded-xl px-5 py-4 text-left border border-gray-100">
-              <p className="text-sm font-semibold text-gray-700 mb-1">Didn't receive it?</p>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                Double-check the email address you entered and check your spam folder. If it's still
-                not there,{' '}
-                <button
-                  onClick={() => setPhase('teaser')}
-                  className="text-indigo-600 underline underline-offset-2 hover:text-indigo-800 font-medium bg-transparent border-0 p-0 cursor-pointer"
-                >
-                  try again with a different address
-                </button>.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
-            <div className="relative">
-              <div className="p-6 blur-sm select-none pointer-events-none opacity-60 space-y-3">
-                <div className="h-4 bg-gray-200 rounded w-3/4" />
-                <div className="h-4 bg-gray-200 rounded w-1/2" />
-                <div className="h-4 bg-gray-200 rounded w-2/3" />
-                <div className="h-4 bg-gray-200 rounded w-5/6" />
-                <div className="h-4 bg-gray-200 rounded w-1/3" />
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-white/90 backdrop-blur-sm rounded-lg px-4 py-2 shadow">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Full report locked</p>
-                </div>
-              </div>
-            </div>
-            <div className="border-t border-gray-100 px-6 py-6">
-              <p className="text-center text-sm font-semibold text-gray-700 mb-4">
-                Enter your email to see your full report
-              </p>
-              <form onSubmit={handleEmailSubmit} className="flex flex-col sm:flex-row gap-3">
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => { setEmail(e.target.value); setEmailError('') }}
-                  placeholder="you@yourbusiness.com"
-                  className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-                />
-                <button
-                  type="submit"
-                  disabled={emailSending}
-                  className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm whitespace-nowrap"
-                >
-                  {emailSending ? 'Sending…' : 'Send My Report'}
-                </button>
-              </form>
-              {emailError && <p className="text-red-500 text-xs mt-2">{emailError}</p>}
-              <p className="text-xs text-gray-400 text-center mt-3">
-                We'll email you a secure link — no password needed.
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-    </main>
-  )
+  return <LoadingView />
 }

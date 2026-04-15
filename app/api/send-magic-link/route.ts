@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
     (scanData.hoursFlag ? 1 : 0)
 
   const { error: emailError } = await resend.emails.send({
-    from: 'onboarding@resend.dev',
+    from: 'Convoa Scan <scan@send.convoa.com>',
     to: email,
     subject: 'Your Google Business Profile Report',
     html: buildEmailHtml({

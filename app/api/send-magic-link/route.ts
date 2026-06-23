@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { randomUUID } from 'crypto'
-import { createClient } from '@/lib/supabase'
+import pool from '@/lib/db'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
@@ -87,17 +87,13 @@ export async function POST(req: NextRequest) {
   const token = randomUUID()
   const magicLink = `${BASE_URL}/results?token=${token}`
 
-  // ── 1. Persist token + scan data to Supabase ─────────────────────────────
-  const supabase = createClient()
-
-  const { error: dbError } = await supabase.from('magic_links').insert({
-    token,
-    email,
-    scan_data: scanData,
-    used: false,
-  })
-
-  if (dbError) {
+  // ── 1. Persist token + scan data to PostgreSQL ─────────────────────────────
+  try {
+    await pool.query(
+      'INSERT INTO magic_links (token, email, scan_data) VALUES ($1, $2, $3)',
+      [token, email, JSON.stringify(scanData)]
+    )
+  } catch (dbError) {
     console.error('magic_links insert error:', dbError)
     return NextResponse.json({ error: 'Failed to create magic link' }, { status: 500 })
   }
@@ -108,23 +104,33 @@ export async function POST(req: NextRequest) {
     ((scanData.commFailCount ?? 0) > 0 ? 1 : 0) +
     (scanData.hoursFlag ? 1 : 0)
 
-  const { error: emailError } = await resend.emails.send({
-    from: 'Convoa Scan <scan@send.convoa.com>',
-    to: email,
-    subject: 'Your Google Business Profile Report',
-    html: buildEmailHtml({
-      businessName: scanData.name || scanData.formBusinessName || 'Your Business',
-      city: scanData.city ?? '',
-      state: scanData.state ?? '',
-      totalIssues,
-      magicLink,
-    }),
-  })
+  let emailError: any = null
+  if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY.startsWith('mock')) {
+    console.log('Skipping real Resend email call since RESEND_API_KEY starts with mock. Email sent to:', email)
+  } else {
+    const { error } = await resend.emails.send({
+      from: 'Convoa Scan <scan@send.convoa.com>',
+      to: email,
+      subject: 'Your Google Business Profile Report',
+      html: buildEmailHtml({
+        businessName: scanData.name || scanData.formBusinessName || 'Your Business',
+        city: scanData.city ?? '',
+        state: scanData.state ?? '',
+        totalIssues,
+        magicLink,
+      }),
+    })
+    emailError = error
+  }
 
   if (emailError) {
     console.error('Resend error:', emailError)
     // Token is already in DB — clean it up so the user can retry
-    await supabase.from('magic_links').delete().eq('token', token)
+    try {
+      await pool.query('DELETE FROM magic_links WHERE token = $1', [token])
+    } catch (cleanupError) {
+      console.error('Failed to cleanup failed email token:', cleanupError)
+    }
     return NextResponse.json({ error: 'Failed to send email' }, { status: 500 })
   }
 

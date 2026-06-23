@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase'
+import pool from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   const { token } = await req.json()
@@ -8,36 +8,47 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing token' }, { status: 400 })
   }
 
-  const supabase = createClient()
+  try {
+    // ── Look up the token ────────────────────────────────────────────────────
+    const result = await pool.query(
+      'SELECT token, email, scan_data FROM magic_links WHERE token = $1 LIMIT 1',
+      [token]
+    )
 
-  // ── Look up the token ────────────────────────────────────────────────────
-  const { data, error } = await supabase
-    .from('magic_links')
-    .select('*')
-    .eq('token', token)
-    .single()
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'invalid' }, { status: 404 })
+    }
 
-  if (error || !data) {
-    return NextResponse.json({ error: 'invalid' }, { status: 404 })
+    const data = result.rows[0]
+
+    // ── Save the verified lead to the leads table ────────────────────────────
+    const sd = data.scan_data
+    try {
+      await pool.query(
+        `INSERT INTO leads (email, business_name, city, trade, profile_score, comm_fail_count, hours_flag, competitor_data) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          data.email,
+          sd?.name || sd?.formBusinessName,
+          sd?.city,
+          sd?.trade,
+          sd?.profileScore,
+          sd?.commFailCount,
+          sd?.hoursFlag ?? false,
+          sd?.competitors ? JSON.stringify(sd.competitors) : null
+        ]
+      )
+    } catch (leadError) {
+      console.error('Lead insert failure (non-fatal):', leadError)
+    }
+
+    return NextResponse.json({
+      success: true,
+      email: data.email,
+      scanData: data.scan_data,
+    })
+  } catch (err) {
+    console.error('Error verifying token:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-
-  // ── Save the verified lead to the leads table ────────────────────────────
-  const sd = data.scan_data
-  await supabase.from('leads').insert({
-    email: data.email,
-    business_name: sd?.name || sd?.formBusinessName,
-    city: sd?.city,
-    trade: sd?.trade,
-    profile_score: sd?.profileScore,
-    comm_fail_count: sd?.commFailCount,
-    hours_flag: sd?.hoursFlag ?? false,
-    competitor_data: sd?.competitors ?? null,
-  })
-  // Lead insert failure is non-fatal — we still unlock the report
-
-  return NextResponse.json({
-    success: true,
-    email: data.email,
-    scanData: data.scan_data,
-  })
 }

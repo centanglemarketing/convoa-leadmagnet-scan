@@ -300,8 +300,15 @@ function FullReport({ data }: { data: ScanResult }) {
     actionItems.push('Ask your last 3 customers to leave a Google review')
   if (data.serviceTypesCount < 5) actionItems.push('Add more specific service categories to your profile')
 
+  const [copied, setCopied] = useState(false)
+
   function handleShare() {
-    navigator.clipboard.writeText(window.location.href).catch(() => {})
+    navigator.clipboard.writeText(window.location.href)
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+      .catch(() => {})
   }
 
   return (
@@ -609,7 +616,7 @@ function FullReport({ data }: { data: ScanResult }) {
             Convoa helps trades businesses dominate local search — we handle your Google profile, reviews, and online presence so you can focus on the job.
           </p>
           <a
-            href="https://convoa.com"
+            href={process.env.NEXT_PUBLIC_STRATEGY_CALL_URL || "https://convoa.com"}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-block px-8 py-3 rounded-lg font-semibold text-sm transition-opacity hover:opacity-90"
@@ -636,7 +643,7 @@ function FullReport({ data }: { data: ScanResult }) {
             className="px-5 py-2.5 rounded-lg text-sm font-medium border transition-colors hover:opacity-80"
             style={{ borderColor: '#444', color: '#c9c9c9', backgroundColor: 'transparent' }}
           >
-            Share Report
+            {copied ? 'Link Copied!' : 'Share Report'}
           </button>
           <button
             onClick={() => window.print()}

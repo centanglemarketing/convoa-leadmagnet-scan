@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
     console.log('Skipping real Resend email call since RESEND_API_KEY starts with mock. Email sent to:', email)
   } else {
     const { error } = await resend.emails.send({
-      from: 'Convoa Scan <scan@send.convoa.com>',
+      from: process.env.SENDER_EMAIL || 'Convoa Scan <scan@send.convoa.com>',
       to: email,
       subject: 'Your Google Business Profile Report',
       html: buildEmailHtml({

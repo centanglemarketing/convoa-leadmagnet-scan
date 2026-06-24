@@ -1,7 +1,8 @@
 -- PostgreSQL database initialization script
 
--- Create database (Note: Run this statement first while connected to the default 'postgres' database)
-CREATE DATABASE convoa_leadmagnet;
+-- Create database if it does not exist (requires execution via psql CLI)
+SELECT 'CREATE DATABASE convoa_leadmagnet'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'convoa_leadmagnet')\gexec
 
 -- If running via psql CLI, switch to the newly created database:
 -- \c convoa_leadmagnet

@@ -3,7 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "127.0.0.1:3000:3000"
+    network_mode: "host"
+    environment:
+      - PORT=31000
     env_file:
       - .env.prod

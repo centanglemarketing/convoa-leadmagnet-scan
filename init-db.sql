@@ -1,10 +1,7 @@
 -- PostgreSQL database initialization script
 
--- Ensure the schema exists for the leads table
-CREATE SCHEMA IF NOT EXISTS convoa_leadmagnet;
-
--- Leads table (using native UUID and JSONB)
-CREATE TABLE IF NOT EXISTS convoa_leadmagnet.leads (
+-- Leads table (using native UUID and JSONB in public schema)
+CREATE TABLE IF NOT EXISTS leads (
   id                UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   email             VARCHAR(255),
   business_name     VARCHAR(255),
@@ -17,10 +14,10 @@ CREATE TABLE IF NOT EXISTS convoa_leadmagnet.leads (
   created_at        TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index on leads(email) in convoa_leadmagnet schema
-CREATE INDEX IF NOT EXISTS idx_leads_email ON convoa_leadmagnet.leads(email);
+-- Index on leads(email)
+CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
 
--- Magic links table (using native UUID and JSONB)
+-- Magic links table (using native UUID and JSONB in public schema)
 CREATE TABLE IF NOT EXISTS magic_links (
   id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   token        VARCHAR(255) NOT NULL UNIQUE,

@@ -3,7 +3,7 @@ import { Resend } from 'resend'
 import { randomUUID } from 'crypto'
 import pool from '@/lib/db'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+const resend = new Resend(process.env.RESEND_API_KEY || 'mock-key')
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
 
 function buildEmailHtml(params: {

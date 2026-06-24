@@ -1,5 +1,11 @@
 -- PostgreSQL database initialization script
 
+-- Create database (Note: Run this statement first while connected to the default 'postgres' database)
+CREATE DATABASE convoa_leadmagnet;
+
+-- If running via psql CLI, switch to the newly created database:
+-- \c convoa_leadmagnet
+
 -- Leads table (using native UUID and JSONB in public schema)
 CREATE TABLE IF NOT EXISTS leads (
   id                UUID DEFAULT gen_random_uuid() PRIMARY KEY,

@@ -45,9 +45,10 @@ export default function LandingPage() {
 
   return (
     <main className="min-h-screen flex flex-col" style={{ backgroundColor: '#0a0a0a' }}>
-      {/* Nav */}
       <nav className="px-6 py-4 border-b" style={{ borderColor: '#1a1a1a' }}>
-        <img src="/convoa-logo.png" alt="Convoa" style={{ maxHeight: '40px' }} />
+        <a href="https://convoa.com/">
+          <img src="/convoa-logo.png" alt="Convoa" style={{ maxHeight: '40px', cursor: 'pointer' }} />
+        </a>
       </nav>
 
       {/* Hero */}

@@ -197,7 +197,9 @@ function logScale(value: number, max: number): number {
 function NavBar() {
   return (
     <nav className="px-6 py-4 border-b" style={{ borderColor: '#2a2a2a' }}>
-      <img src="/convoa-logo.png" alt="Convoa" style={{ maxHeight: '40px' }} />
+      <a href="https://convoa.com/">
+        <img src="/convoa-logo.png" alt="Convoa" style={{ maxHeight: '40px', cursor: 'pointer' }} />
+      </a>
     </nav>
   )
 }
